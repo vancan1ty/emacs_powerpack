@@ -74,26 +74,35 @@ Section "MinGW" MinGW
    File test2.txt
 SectionEnd
 
+Section "Helper Utilities" HelperUtils
+  SetOutPath "$INSTDIR"
+
+   File test3.txt
+SectionEnd
+
+
 ;--------------------------------
 ;Descriptions
 
-  ;Language strings
-  LangString DESC_Emacs ${LANG_ENGLISH} "An emacs section."
+;Language strings
+LangString DESC_Emacs ${LANG_ENGLISH} "Install GNU Emacs 24.5."
+LangString DESC_MinGW ${LANG_ENGLISH} "Install MinGW"
+LangString DESC_MinGW ${LANG_ENGLISH} "Install MinGW"
 
-  ;Assign language strings to sections
-  !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
-    !insertmacro MUI_DESCRIPTION_TEXT ${Emacs} $(DESC_Emacs)
-  !insertmacro MUI_FUNCTION_DESCRIPTION_END
+;Assign language strings to sections
+!insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
+	     !insertmacro MUI_DESCRIPTION_TEXT ${Emacs} $(DESC_Emacs)
+!insertmacro MUI_FUNCTION_DESCRIPTION_END
 
 ;--------------------------------
 ;Uninstaller Section
 
 Section "Uninstall"
 
-  Delete $INSTDIR\Uninstall.exe
+Delete $INSTDIR\Uninstall.exe
 
-  Delete $INSTDIR\test.txt
-  Delete $INSTDIR\test2.txt
+Delete $INSTDIR\test.txt
+Delete $INSTDIR\test2.txt
 
   RMDir $INSTDIR
 
