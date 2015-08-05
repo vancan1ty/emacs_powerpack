@@ -113,8 +113,8 @@ Section "Emacs 24.5" Emacs
   	SetOutPath "$INSTDIR"
   	SetShellVarContext all
 
-	File /r test.txt
-	createShortCut "$SMPROGRAMS\Emacs_PowerPack\Emacs.lnk" "$INSTDIR\app.exe" "" "$INSTDIR\logo.ico"
+	File /r externals\emacs 
+	createShortCut "$SMPROGRAMS\Emacs_PowerPack\Emacs.lnk" "$INSTDIR\emacs\bin\runemacs.exe" "" "$INSTDIR\logo.ico"
 sectionEnd
 
 Section "MinGW" MinGW
@@ -165,6 +165,7 @@ Section "Uninstall"
 	delete $INSTDIR\logo.ico
 	Delete $INSTDIR\test.txt
 	Delete $INSTDIR\test2.txt
+	RMDir /r $INSTDIR\emacs
 	Delete $INSTDIR\test3.txt
 	
 	# Remove Start Menu launcher
