@@ -6,6 +6,8 @@
 
 Name "Emacs_PowerPack"
 Icon "ep_logo.ico"
+!define MUI_ICON "ep_logo.ico"
+
 OutFile "Emacs_PowerPack.exe"
 !define VERSIONMAJOR 1
 !define VERSIONMINOR 1
