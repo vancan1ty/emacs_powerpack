@@ -11,8 +11,8 @@ OutFile "Emacs_PowerPack.exe"
 !define VERSIONMINOR 1
 !define VERSIONBUILD 1
 !define DESCRIPTION "Facilitates install of Emacs+MinGW+Utilities"
-!define EMACSDIR 'emacs'
-!define MINGWDIR 'mingw'
+!define EMACSFILE 'emacs-24.5.zip'
+!define MINGWFILE 'MinGW.zip'
 
 ;default location where emacs powerpack itself will be installed
 InstallDir "$PROGRAMFILES\Emacs_PowerPack"
@@ -32,7 +32,7 @@ RequestExecutionLevel admin ;Require admin rights on NT6+
 !define ABOUTURL "http://cvberry.com/software/emacs_powerpack" # "Publisher" link
 
 # This is the size (in kB) of all the files copied into "Program Files"
-!define INSTALLSIZE 7233
+!define INSTALLSIZE 230000
 
 !define MUI_ABORTWARNING
  
@@ -130,7 +130,17 @@ SectionGroup "Emacs" EmacsGroup
   Section "Emacs 24.5" Emacs
 	SectionIn 1
   	SetOutPath "${EMACSINSTALLDIR}"
-	File /r "externals\${EMACSDIR}\*"
+	InitPluginsDir
+	File /r "externals\${EMACSFILE}"
+  	nsisunz::UnzipToLog "${EMACSINSTALLDIR}\${EMACSFILE}" "${EMACSINSTALLDIR}"
+	;Always check result on stack
+	Pop $0
+	StrCmp $0 "success" ok
+	   DetailPrint "$0" ;print error message to log
+	ok:
+
+	delete "${EMACSINSTALLDIR}\${EMACSFILE}"
+
 	createShortCut "$SMPROGRAMS\Emacs_PowerPack\Emacs.lnk" "${EMACSINSTALLDIR}\bin\runemacs.exe" "" "${EMACSINSTALLDIR}\share\icons\hicolor\32x32\apps\emacs.png"
 SectionEnd
  
@@ -140,23 +150,55 @@ SectionEnd
 ;    CreateDirectory "$SMPROGRAMS\Harbinger"
 ;    CreateShortCut "$SMPROGRAMS\Harbinger\Harbinger 2003 Standard Edition.lnk" "$2\Harbinger.exe"
   SectionEnd
+
+Section "Add emacs to PATH" EMACS_PATH_SECTION
+  	  SectionIn 1
+
+  	  Push "${EMACSINSTALLDIR}\bin"
+  	  Call AddToPath
+SectionEnd
+
 SectionGroupEnd
 
 SectionGroup "MinGW" MinGWGroup
     Section "MinGW 1.x" MinGW
 	SectionIn 1
 	SetOutPath "${MINGWINSTALLDIR}"
-	File /r "externals\${MINGWDIR}\*"
+
+	File /r "externals\${MINGWFILE}"
+  	nsisunz::UnzipToLog "${MINGWINSTALLDIR}\${MINGWFILE}" "${MINGWINSTALLDIR}"
+	;Always check result on stack
+	Pop $0
+	StrCmp $0 "success" ok
+	   DetailPrint "$0" ;print error message to log
+	ok:
+
+	delete "${MINGWINSTALLDIR}\${MINGWFILE}"
+
 	createShortCut "$SMPROGRAMS\Emacs_PowerPack\MinGW.lnk" "${MINGWINSTALLDIR}\msys\1.0\msys.bat" "" "$INSTDIR\logo.ico"
     SectionEnd
 
-    Section "MinGW Extras" MinGWExtras 
+;    Section "MinGW Extras" MinGWExtras 
 ;	SectionIn 1
 ;	SetOutPath "$INSTDIR"
 ;  	SetShellVarContext all
 
 ;	File test3.txt
-    SectionEnd
+;    SectionEnd
+
+Section "Add MinGW utilities (gcc, gdb, etc...) to PATH" MINGW_PATH_SECTION
+  	  SectionIn 1
+
+  	  Push "${MINGWINSTALLDIR}\bin"
+  	  Call AddToPath
+SectionEnd
+
+Section "Add msys (mingw shell) to PATH" MSYS_PATH_SECTION
+  	  SectionIn 1
+
+  	  Push "${MINGWINSTALLDIR}\msys\1.0"
+  	  Call AddToPath
+SectionEnd
 
 SectionGroupEnd
 
@@ -191,12 +233,27 @@ Section "Uninstall"
 	# Remove files
 	delete $INSTDIR\README.txt
 	delete $INSTDIR\ep_logo.ico
-	RMDir /r $EPINSTALLDIR
-	
+	RMDir /r "${EPINSTALLDIR}"
+
 	# Remove Start Menu launcher
 	# Try to remove the Start Menu folder - this will only happen if it is empty
 	DetailPrint "attempt removal of  $SMPROGRAMS\Emacs_PowerPack"
 	RMDir "$SMPROGRAMS\Emacs_PowerPack"
+
+  	; Remove emacs install dir from PATH
+  	Push "${EMACSINSTALLDIR}\bin"
+  	Call un.RemoveFromPath
+
+	RMDir /r "${EMACSINSTALLDIR}"
+
+  	; Remove mingw bin from PATH
+  	Push "${MINGWINSTALLDIR}\bin"
+  	Call un.RemoveFromPath
+
+  	; Remove msys bin from PATH
+  	Push "${MINGWINSTALLDIR}\msys\1.0"
+  	Call un.RemoveFromPath
+	RMDir /r "${MINGWINSTALLDIR}"
 	
 	Delete $INSTDIR\Uninstall.exe
 	
@@ -205,3 +262,183 @@ Section "Uninstall"
 	DeleteRegKey /ifempty HKCU "Software\Emacs PowerPack"
 	DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Emacs_PowerPack"
 SectionEnd
+
+;--------------------------------------------------------------------
+; Path functions
+;
+; Based on example from:
+; http://nsis.sourceforge.net/Path_Manipulation
+; taken from smartmontools installer
+; http://www.smartmontools.org/browser/trunk/smartmontools/os_win32/installer.nsi?rev=4110&order=name
+;
+
+!include "WinMessages.nsh"
+
+; Registry Entry for environment (NT4,2000,XP)
+; All users:
+;!define Environ 'HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"'
+; Current user only:
+!define Environ 'HKCU "Environment"'
+
+; AddToPath - Appends dir to PATH
+;   (does not work on Win9x/ME)
+;
+; Usage:
+;   Push "dir"
+;   Call AddToPath
+
+Function AddToPath
+  Exch $0
+  Push $1
+  Push $2
+  Push $3
+  Push $4
+
+  ; NSIS ReadRegStr returns empty string on string overflow
+  ; Native calls are used here to check actual length of PATH
+
+  ; $4 = RegOpenKey(HKEY_CURRENT_USER, "Environment", &$3)
+  System::Call "advapi32::RegOpenKey(i 0x80000001, t'Environment', *i.r3) i.r4"
+  IntCmp $4 0 0 done done
+  ; $4 = RegQueryValueEx($3, "PATH", (DWORD*)0, (DWORD*)0, &$1, ($2=NSIS_MAX_STRLEN, &$2))
+  ; RegCloseKey($3)
+  System::Call "advapi32::RegQueryValueEx(i $3, t'PATH', i 0, i 0, t.r1, *i ${NSIS_MAX_STRLEN} r2) i.r4"
+  System::Call "advapi32::RegCloseKey(i $3)"
+
+  IntCmp $4 234 0 +4 +4 ; $4 == ERROR_MORE_DATA
+    DetailPrint "AddToPath: original length $2 > ${NSIS_MAX_STRLEN}"
+    MessageBox MB_OK "PATH not updated, original length $2 > ${NSIS_MAX_STRLEN}"
+    Goto done
+
+  IntCmp $4 0 +5 ; $4 != NO_ERROR
+    IntCmp $4 2 +3 ; $4 != ERROR_FILE_NOT_FOUND
+      DetailPrint "AddToPath: unexpected error code $4"
+      Goto done
+    StrCpy $1 ""
+
+  ; Check if already in PATH
+  Push "$1;"
+  Push "$0;"
+  Call StrStr
+  Pop $2
+  StrCmp $2 "" 0 done
+  Push "$1;"
+  Push "$0\;"
+  Call StrStr
+  Pop $2
+  StrCmp $2 "" 0 done
+
+  ; Prevent NSIS string overflow
+  StrLen $2 $0
+  StrLen $3 $1
+  IntOp $2 $2 + $3
+  IntOp $2 $2 + 2 ; $2 = strlen(dir) + strlen(PATH) + sizeof(";")
+  IntCmp $2 ${NSIS_MAX_STRLEN} +4 +4 0
+    DetailPrint "AddToPath: new length $2 > ${NSIS_MAX_STRLEN}"
+    MessageBox MB_OK "PATH not updated, new length $2 > ${NSIS_MAX_STRLEN}."
+    Goto done
+
+  ; Append dir to PATH
+  DetailPrint "Add to PATH: $0"
+  StrCpy $2 $1 1 -1
+  StrCmp $2 ";" 0 +2
+    StrCpy $1 $1 -1 ; remove trailing ';'
+  StrCmp $1 "" +2   ; no leading ';'
+    StrCpy $0 "$1;$0"
+  WriteRegExpandStr ${Environ} "PATH" $0
+  SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
+
+done:
+  Pop $4
+  Pop $3
+  Pop $2
+  Pop $1
+  Pop $0
+FunctionEnd
+
+
+; RemoveFromPath - Removes dir from PATH
+;
+; Usage:
+;   Push "dir"
+;   Call RemoveFromPath
+
+Function un.RemoveFromPath
+  Exch $0
+  Push $1
+  Push $2
+  Push $3
+  Push $4
+  Push $5
+  Push $6
+
+  ReadRegStr $1 ${Environ} "PATH"
+  StrCpy $5 $1 1 -1
+  StrCmp $5 ";" +2
+    StrCpy $1 "$1;" ; ensure trailing ';'
+  Push $1
+  Push "$0;"
+  Call un.StrStr
+  Pop $2 ; pos of our dir
+  StrCmp $2 "" done
+
+  DetailPrint "Remove from PATH: $0"
+  StrLen $3 "$0;"
+  StrLen $4 $2
+  StrCpy $5 $1 -$4 ; $5 is now the part before the path to remove
+  StrCpy $6 $2 "" $3 ; $6 is now the part after the path to remove
+  StrCpy $3 "$5$6"
+  StrCpy $5 $3 1 -1
+  StrCmp $5 ";" 0 +2
+    StrCpy $3 $3 -1 ; remove trailing ';'
+  WriteRegExpandStr ${Environ} "PATH" $3
+  SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
+
+done:
+  Pop $6
+  Pop $5
+  Pop $4
+  Pop $3
+  Pop $2
+  Pop $1
+  Pop $0
+FunctionEnd
+ 
+
+; StrStr - find substring in a string
+;
+; Usage:
+;   Push "this is some string"
+;   Push "some"
+;   Call StrStr
+;   Pop $0 ; "some string"
+
+!macro StrStr un
+Function ${un}StrStr
+  Exch $R1 ; $R1=substring, stack=[old$R1,string,...]
+  Exch     ;                stack=[string,old$R1,...]
+  Exch $R2 ; $R2=string,    stack=[old$R2,old$R1,...]
+  Push $R3
+  Push $R4
+  Push $R5
+  StrLen $R3 $R1
+  StrCpy $R4 0
+  ; $R1=substring, $R2=string, $R3=strlen(substring)
+  ; $R4=count, $R5=tmp
+  loop:
+    StrCpy $R5 $R2 $R3 $R4
+    StrCmp $R5 $R1 done
+    StrCmp $R5 "" done
+    IntOp $R4 $R4 + 1
+    Goto loop
+done:
+  StrCpy $R1 $R2 "" $R4
+  Pop $R5
+  Pop $R4
+  Pop $R3
+  Pop $R2
+  Exch $R1 ; $R1=old$R1, stack=[result,...]
+FunctionEnd
+!macroend
+!insertmacro StrStr ""
+!insertmacro StrStr "un."
