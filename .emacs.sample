@@ -1,0 +1,48 @@
+; [CB 8/13/15]
+; the below file is a sample .emacs file, written for emacs_powerpack.
+; if something is useful to you, keep it.  otherwise, delete it.
+
+;----- include standard emacs package repos.
+(require 'package)
+(push '("marmalade" . "http://marmalade-repo.org/packages/")
+       package-archives )
+(push '("melpa" . "http://melpa.milkbox.net/packages/")
+       package-archives)
+(package-initialize)
+
+;----- set up msys as default shell instead of cmd (this way M-x shell works as described in emacs manual)
+(setq shell-file-name "C:/MinGW/msys/1.0/bin/bash")
+(setq explicit-shell-file-name shell-file-name)
+(setenv "PATH"
+    (concat ".:/usr/local/bin:/mingw/bin:/bin:"
+        (replace-regexp-in-string " " "\\\\ "
+            (replace-regexp-in-string "\\\\" "/"
+                (replace-regexp-in-string "\\([A-Za-z]\\):" "/\\1"
+					  (getenv "PATH"))))))
+;----- start emacs server if not already started.  allows you to "open with existing emacs"...
+(require 'server)
+(unless (server-running-p)
+  (server-start)) 
+
+;----- Below are some things which you may find useful but which I've commented out by default 
+;----- Delete them if they do not meet your need!
+;----------- the below function facilitates using cygwin alongside emacs.
+;(defun cygwin-shell ()
+;  "Run cygwin bash in shell mode."
+;  (interactive)
+;  (let ((shell-file-name "C:/cygwin64/bin/bash")
+;	(explicit-shell-file-name "C:/cygwin64/bin/bash"))
+;    (call-interactively 'shell)))
+
+;----------- the below code initializes "evil" vim mode (assuming you have installed evil).
+;(require 'evil)
+;(evil-mode 1)
+
+;---------- the following line inhibits the startup screen
+;(setq inhibit-startup-message t)
+
+;---------- hide toolbar
+(tool-bar-mode "no")
+
+;---------- make scrolling behaviour more predictable
+(setq scroll-step 1) 

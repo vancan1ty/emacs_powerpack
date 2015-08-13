@@ -1,20 +1,25 @@
 ;Currell Berry
+;TODO
+;3. test on a couple different platforms. MEH
+;5. add context menu "open with emacs/open msys here" MEDIUM
+;6. "open with existing emacs" MEDIUM/HARD
+;7. copy over .emacs file if there isn't one, otherwise DON'T TOUCH .EMACS.
 
 !include "MUI2.nsh"
 !include nsDialogs.nsh
 !include LogicLib.nsh
 
 Name "Emacs_PowerPack"
-Icon "ep_logo.ico"
-!define MUI_ICON "ep_logo.ico"
+Icon "icons\ep_logo.ico"
+!define MUI_ICON "icons\ep_logo.ico"
 
 OutFile "Emacs_PowerPack.exe"
 !define VERSIONMAJOR 1
 !define VERSIONMINOR 1
 !define VERSIONBUILD 1
 !define DESCRIPTION "Facilitates install of Emacs+MinGW+Utilities"
-!define EMACSFILE 'emacs-24.5.zip'
-!define MINGWFILE 'MinGW.zip'
+!define EMACSFILE 'emacs2.zip'
+!define MINGWFILE 'MinGW2.zip'
 
 ;default location where emacs powerpack itself will be installed
 InstallDir "$PROGRAMFILES\Emacs_PowerPack"
@@ -99,13 +104,14 @@ Section
 
 	# Files added here should be removed by the uninstaller (see section "uninstall")
 	file "README.txt"
-	file "ep_logo.ico"
+	file /r "icons"
  
 	# Uninstaller - See function un.onInit and section "uninstall" for configuration
 	writeUninstaller "$INSTDIR\uninstall.exe"
  
 	# Start Menu
 	createDirectory "$SMPROGRAMS\Emacs_PowerPack"
+	createShortCut "$SMPROGRAMS\Emacs_PowerPack\ep_uninstall.lnk" "$INSTDIR\uninstall.exe" "" "$INSTDIR\icons\ep_logo_uninstall.ico"
 
 	# Registry information for add/remove programs
 	WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Emacs_PowerPack" "DisplayName" "Emacs_PowerPack - Emacs - ${DESCRIPTION}"
@@ -143,15 +149,41 @@ SectionGroup "Emacs" EmacsGroup
 
 	delete "${EMACSINSTALLDIR}\${EMACSFILE}"
 
-	createShortCut "$SMPROGRAMS\Emacs_PowerPack\Emacs.lnk" "${EMACSINSTALLDIR}\bin\runemacs.exe" "" "${EMACSINSTALLDIR}\share\icons\hicolor\32x32\apps\emacs.png"
+	createShortCut "$SMPROGRAMS\Emacs_PowerPack\Emacs.lnk" "${EMACSINSTALLDIR}\bin\runemacs.exe" "" "$INSTDIR\icons\emacs.ico"
 SectionEnd
  
-  Section "Basic Configuration"
-     SectionIn 1
-;    SetOutPath "$2"
-;    CreateDirectory "$SMPROGRAMS\Harbinger"
-;    CreateShortCut "$SMPROGRAMS\Harbinger\Harbinger 2003 Standard Edition.lnk" "$2\Harbinger.exe"
-  SectionEnd
+Section "Basic Configuration"
+    SectionIn 1
+
+    ;1. set HOME env variable if does not exist.
+    ;[CB 8/12/15] note that the current behavior does not handle the edge case where the user has a
+    ;preset HOME environment variable which is not equal to the $PROFILE directory.
+    ; (this should be pretty rare?...)
+    !define env_hklm 'HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"'
+    !define env_hkcu 'HKCU "Environment"'
+    ReadEnvStr $8 "HOME"
+    StrCmp $8 "" 0 homeset
+    WriteRegExpandStr ${env_hkcu} "HOME" $PROFILE 
+    SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=1200
+    homeset:
+
+    ;2. append mingw shell settings to .emacs (create if does not exist).
+    FileOpen $9 $PROFILE\.emacs a
+    FileSeek $9 0 END ;position pointer to end of file
+    FileWrite $9 "$\r$\n;-----following settings written by Emacs_Powerpack----$\r$\n"
+    FileWrite $9 ";set mingw as default emacs shell for M-x shell and friends$\r$\n"
+    FileWrite $9 "(setq shell-file-name 'C:/MinGW/msys/1.0/bin/bash')$\r$\n"
+    FileWrite $9 "(setq explicit-shell-file-name shell-file-name)$\r$\n"
+    FileWrite $9 "(setenv 'PATH'$\r$\n"
+    FileWrite $9 "    (concat '.:/usr/local/bin:/mingw/bin:/bin:'$\r$\n"
+    FileWrite $9 "        (replace-regexp-in-string ' ' '\\\\ '$\r$\n"
+    FileWrite $9 "            (replace-regexp-in-string '\\\\' '/'$\r$\n"
+    FileWrite $9 "                (replace-regexp-in-string '\\([A-Za-z]\\):' '/\\1'$\r$\n"
+    FileWrite $9 "					  (getenv 'PATH'))))))$\r$\n"
+    FileWrite $9 ";-----end Emacs_Powerpack settings----$\r$\n"
+    FileClose $9 ;Closes the filled file
+
+SectionEnd
 
 Section "Add emacs to PATH" EMACS_PATH_SECTION
   	  SectionIn 1
@@ -177,7 +209,7 @@ SectionGroup "MinGW" MinGWGroup
 
 	delete "${MINGWINSTALLDIR}\${MINGWFILE}"
 
-	createShortCut "$SMPROGRAMS\Emacs_PowerPack\MinGW.lnk" "${MINGWINSTALLDIR}\msys\1.0\msys.bat" "" "$INSTDIR\logo.ico"
+	createShortCut "$SMPROGRAMS\Emacs_PowerPack\msys.lnk" "${MINGWINSTALLDIR}\msys\1.0\msys.bat" "" "$INSTDIR\icons\msys.ico"
     SectionEnd
 
 ;    Section "MinGW Extras" MinGWExtras 
@@ -230,11 +262,12 @@ LangString DESC_MinGWExtras ${LANG_ENGLISH} "man pages."
 Section "Uninstall"
   	SetShellVarContext all
 	delete "$SMPROGRAMS\Emacs_PowerPack\Emacs.lnk"
-	delete "$SMPROGRAMS\Emacs_PowerPack\MinGW.lnk"
+	delete "$SMPROGRAMS\Emacs_PowerPack\msys.lnk"
+	delete "$SMPROGRAMS\Emacs_PowerPack\ep_uninstall.lnk"
 	
 	# Remove files
 	delete $INSTDIR\README.txt
-	delete $INSTDIR\ep_logo.ico
+	RMDir /r $INSTDIR\icons
 	RMDir /r "${EPINSTALLDIR}"
 
 	# Remove Start Menu launcher
@@ -278,9 +311,9 @@ SectionEnd
 
 ; Registry Entry for environment (NT4,2000,XP)
 ; All users:
-;!define Environ 'HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"'
+!define Environ 'HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"'
 ; Current user only:
-!define Environ 'HKCU "Environment"'
+;!define Environ 'HKCU "Environment"'
 
 ; AddToPath - Appends dir to PATH
 ;   (does not work on Win9x/ME)
@@ -290,6 +323,7 @@ SectionEnd
 ;   Call AddToPath
 
 Function AddToPath
+  DetailPrint "starting addToPath"
   Exch $0
   Push $1
   Push $2
@@ -299,8 +333,8 @@ Function AddToPath
   ; NSIS ReadRegStr returns empty string on string overflow
   ; Native calls are used here to check actual length of PATH
 
-  ; $4 = RegOpenKey(HKEY_CURRENT_USER, "Environment", &$3)
-  System::Call "advapi32::RegOpenKey(i 0x80000001, t'Environment', *i.r3) i.r4"
+  ; $4 = RegOpenKey(HKEY_LOCAL_MACHINE,   "SYSTEM\CurrentControlSet\Control\Session Manager\Environment", &$3)
+  System::Call "advapi32::RegOpenKey(i 0x80000002, t'SYSTEM\CurrentControlSet\Control\Session Manager\Environment', *i.r3) i.r4"
   IntCmp $4 0 0 done done
   ; $4 = RegQueryValueEx($3, "PATH", (DWORD*)0, (DWORD*)0, &$1, ($2=NSIS_MAX_STRLEN, &$2))
   ; RegCloseKey($3)
@@ -318,6 +352,8 @@ Function AddToPath
       Goto done
     StrCpy $1 ""
 
+
+  DetailPrint "before path check"
   ; Check if already in PATH
   Push "$1;"
   Push "$0;"
@@ -340,6 +376,7 @@ Function AddToPath
     MessageBox MB_OK "PATH not updated, new length $2 > ${NSIS_MAX_STRLEN}."
     Goto done
 
+
   ; Append dir to PATH
   DetailPrint "Add to PATH: $0"
   StrCpy $2 $1 1 -1
@@ -347,8 +384,11 @@ Function AddToPath
     StrCpy $1 $1 -1 ; remove trailing ';'
   StrCmp $1 "" +2   ; no leading ';'
     StrCpy $0 "$1;$0"
+  DetailPrint "before WriteRegExpandStr"
   WriteRegExpandStr ${Environ} "PATH" $0
-  SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
+  DetailPrint "before SendMessage"
+  SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=1200
+  DetailPrint "sendMessage done"
 
 done:
   Pop $4
@@ -356,6 +396,8 @@ done:
   Pop $2
   Pop $1
   Pop $0
+
+  DetailPrint "finishing addToPath"
 FunctionEnd
 
 
@@ -394,7 +436,7 @@ Function un.RemoveFromPath
   StrCmp $5 ";" 0 +2
     StrCpy $3 $3 -1 ; remove trailing ';'
   WriteRegExpandStr ${Environ} "PATH" $3
-  SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
+  SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=1200
 
 done:
   Pop $6
@@ -406,6 +448,7 @@ done:
   Pop $0
 FunctionEnd
  
+var timer
 
 ; StrStr - find substring in a string
 ;
