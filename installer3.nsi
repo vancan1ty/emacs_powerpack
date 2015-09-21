@@ -1,9 +1,7 @@
 ;Currell Berry
 ;TODO
 ;3. test on a couple different platforms. MEH
-;5. add context menu "open with emacs/open msys here" MEDIUM
-;6. "open with existing emacs" MEDIUM/HARD
-;7. copy over .emacs file if there isn't one, otherwise DON'T TOUCH .EMACS.
+;8. go through and make sure bundled msys has all advertised features. HARDISH.
 
 !include "MUI2.nsh"
 !include nsDialogs.nsh
@@ -18,8 +16,10 @@ OutFile "Emacs_PowerPack.exe"
 !define VERSIONMINOR 1
 !define VERSIONBUILD 1
 !define DESCRIPTION "Facilitates install of Emacs+MinGW+Utilities"
-!define EMACSFILE 'emacs2.zip'
-!define MINGWFILE 'MinGW2.zip'
+!define EMACSFILE 'emacs-24.5.zip'
+!define MINGWFILE 'MinGW.zip'
+;!define EMACSFILE 'emacs2.zip'
+;!define MINGWFILE 'MinGW2.zip'
 
 ;default location where emacs powerpack itself will be installed
 InstallDir "$PROGRAMFILES\Emacs_PowerPack"
@@ -57,9 +57,13 @@ LicenseData "LICENSE.txt"
 !insertmacro MUI_PAGE_COMPONENTS
 
 Page custom myConfirmPage
+
+!define MUI_PAGE_CUSTOMFUNCTION_LEAVE BroadcastPathChanges
 !insertmacro MUI_PAGE_INSTFILES
 
 !insertmacro MUI_UNPAGE_CONFIRM
+
+!define MUI_PAGE_CUSTOMFUNCTION_LEAVE un.BroadcastPathChanges
 !insertmacro MUI_UNPAGE_INSTFILES
 
 !insertmacro MUI_LANGUAGE "English"
@@ -154,35 +158,22 @@ SectionEnd
  
 Section "Basic Configuration"
     SectionIn 1
+    SetOutPath "$PROFILE"
 
-    ;1. set HOME env variable if does not exist.
-    ;[CB 8/12/15] note that the current behavior does not handle the edge case where the user has a
-    ;preset HOME environment variable which is not equal to the $PROFILE directory.
-    ; (this should be pretty rare?...)
+    ;1. set HOME env variable
     !define env_hklm 'HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"'
     !define env_hkcu 'HKCU "Environment"'
-    ReadEnvStr $8 "HOME"
-    StrCmp $8 "" 0 homeset
     WriteRegExpandStr ${env_hkcu} "HOME" $PROFILE 
-    SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=1200
-    homeset:
 
-    ;2. append mingw shell settings to .emacs (create if does not exist).
-    FileOpen $9 $PROFILE\.emacs a
-    FileSeek $9 0 END ;position pointer to end of file
-    FileWrite $9 "$\r$\n;-----following settings written by Emacs_Powerpack----$\r$\n"
-    FileWrite $9 ";set mingw as default emacs shell for M-x shell and friends$\r$\n"
-    FileWrite $9 "(setq shell-file-name 'C:/MinGW/msys/1.0/bin/bash')$\r$\n"
-    FileWrite $9 "(setq explicit-shell-file-name shell-file-name)$\r$\n"
-    FileWrite $9 "(setenv 'PATH'$\r$\n"
-    FileWrite $9 "    (concat '.:/usr/local/bin:/mingw/bin:/bin:'$\r$\n"
-    FileWrite $9 "        (replace-regexp-in-string ' ' '\\\\ '$\r$\n"
-    FileWrite $9 "            (replace-regexp-in-string '\\\\' '/'$\r$\n"
-    FileWrite $9 "                (replace-regexp-in-string '\\([A-Za-z]\\):' '/\\1'$\r$\n"
-    FileWrite $9 "					  (getenv 'PATH'))))))$\r$\n"
-    FileWrite $9 ";-----end Emacs_Powerpack settings----$\r$\n"
-    FileClose $9 ;Closes the filled file
-
+    ;2. if .emacs exists, then write .emacs.sample.  otherwise, write .emacs
+    IfFileExists "$PROFILE\\.emacs" eexists enoexists
+    eexists: ;then we just write a sample file and leave .emacs alone
+    file  .emacs.sample
+    goto after_dot_emacs
+    enoexists:
+    file /oname=.emacs .emacs.sample
+    after_dot_emacs:
+    
 SectionEnd
 
 Section "Add emacs to PATH" EMACS_PATH_SECTION
@@ -191,6 +182,16 @@ Section "Add emacs to PATH" EMACS_PATH_SECTION
   	  Push "${EMACSINSTALLDIR}\bin"
   	  Call AddToPath
 SectionEnd
+
+Section "Add 'open with emacs' option to context menu" EMACS_CTX_SECTION
+  	  SectionIn 1
+
+	 WriteRegStr HKCR "*\shell\Open With Emacs\command" "" '${EMACSINSTALLDIR}\bin\emacsclientw.exe  -n --alternate-editor="${EMACSINSTALLDIR}\bin\runemacs.exe"  "%1"' 
+
+  	  Push "${EMACSINSTALLDIR}\bin"
+  	  Call AddToPath
+SectionEnd
+
 
 SectionGroupEnd
 
@@ -293,6 +294,8 @@ Section "Uninstall"
 	Delete $INSTDIR\Uninstall.exe
 	
 	RMDir $INSTDIR
+
+	DeleteRegKey HKCR "*\shell\Open With Emacs" 
 	
 	DeleteRegKey /ifempty HKCU "Software\Emacs PowerPack"
 	DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Emacs_PowerPack"
@@ -323,7 +326,6 @@ SectionEnd
 ;   Call AddToPath
 
 Function AddToPath
-  DetailPrint "starting addToPath"
   Exch $0
   Push $1
   Push $2
@@ -353,7 +355,6 @@ Function AddToPath
     StrCpy $1 ""
 
 
-  DetailPrint "before path check"
   ; Check if already in PATH
   Push "$1;"
   Push "$0;"
@@ -384,11 +385,7 @@ Function AddToPath
     StrCpy $1 $1 -1 ; remove trailing ';'
   StrCmp $1 "" +2   ; no leading ';'
     StrCpy $0 "$1;$0"
-  DetailPrint "before WriteRegExpandStr"
   WriteRegExpandStr ${Environ} "PATH" $0
-  DetailPrint "before SendMessage"
-  SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=1200
-  DetailPrint "sendMessage done"
 
 done:
   Pop $4
@@ -436,7 +433,6 @@ Function un.RemoveFromPath
   StrCmp $5 ";" 0 +2
     StrCpy $3 $3 -1 ; remove trailing ';'
   WriteRegExpandStr ${Environ} "PATH" $3
-  SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=1200
 
 done:
   Pop $6
@@ -487,3 +483,17 @@ FunctionEnd
 !macroend
 !insertmacro StrStr ""
 !insertmacro StrStr "un."
+
+;CB it appears that this is necessary for new cmd windows etc... to see the changed
+;path items.  otherwise you have to completely reboot.
+Function BroadcastPathChanges
+  DetailPrint "broadcasting registry updates."
+  SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=1500
+  DetailPrint "Completed."
+FunctionEnd
+
+Function un.BroadcastPathChanges
+  DetailPrint "broadcasting registry updates."
+  SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=1500
+  DetailPrint "Completed."
+FunctionEnd
