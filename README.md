@@ -12,6 +12,7 @@ Download v0.2 alpha
 What Emacs Powerpack Does
 -------------------------------------------------------------------
 Once Emacs Powerpack is installed, several things should be accomplished for you:
+
 1. You can type "emacs" in the start menu to find and launch emacs.
 2. You can type "msys" in the start menu to find and launch msys, a bash shell configured for windows.
 3. Context menus should have an "open with emacs" option.
