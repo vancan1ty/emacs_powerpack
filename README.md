@@ -35,6 +35,7 @@ Installation Directions
 Which scenario are you?
 
 1. I have not installed emacs or mingw on my system.
+
     Just download emacs powerpack and run the installer.  Emacs Powerpack will install both emacs and mingw for you.  Fire up emacs and everything, including os-provided features such as grep, sed, and find, should work as described in the emacs manual.
 
 2. I am already using either emacs or mingw or both on my system.
