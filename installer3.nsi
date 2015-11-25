@@ -38,7 +38,7 @@ RequestExecutionLevel admin ;Require admin rights on NT6+
 !define UPDATEURL "http://cvberry.com/software/emacs_powerpack" # "Product Updates" link
 !define ABOUTURL "http://cvberry.com/software/emacs_powerpack" # "Publisher" link
 
-# This is the size (in kB) of all the files copied into "Program Files"
+# This is the approximate size (in kB) of all the files copied into "Program Files"
 !define INSTALLSIZE 230000
 
 !define MUI_ABORTWARNING
